@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RateMyHitCam.borg - Where Cam's Hits Get Rated</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">🥊 RateMyHitCam.borg</h1>
+            <p class="tagline">The Premier Platform for Rating Cam's Hits on Nick</p>
+            <div class="admin-bar">
+                <div id="adminStatus" class="admin-status">Guest</div>
+                <button id="adminToggleBtn" class="admin-btn" type="button">Admin</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <section class="hero">
+                <h2>🎯 Rate Today's Hit!</h2>
+                <p>Did Cam just deliver a hit on Nick? Rate it now!</p>
+            </section>
+
+            <section class="submit-hit">
+                <h3>📝 Submit a New Hit</h3>
+                <form id="hitForm" class="hit-form">
+                    <div class="form-group">
+                        <label for="hitReason">What did Nick do to deserve this?</label>
+                        <input type="text" id="hitReason" placeholder="e.g., 'Made a terrible dad joke'" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="hitType">Type of Hit</label>
+                        <select id="hitType" required>
+                            <option value="">Select hit type...</option>
+                            <option value="slap">🖐️ Classic Slap</option>
+                            <option value="poke">👉 Annoying Poke</option>
+                            <option value="noogie">👊 Noogie</option>
+                            <option value="wet_willy">💧 Wet Willy</option>
+                            <option value="pillow">🛏️ Pillow Attack</option>
+                            <option value="other">❓ Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="hitSeverity">Severity (1-10)</label>
+                        <input type="range" id="hitSeverity" min="1" max="10" value="5" class="severity-slider">
+                        <span id="severityValue">5</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="hitDescription">Description</label>
+                        <textarea id="hitDescription" placeholder="Describe the hit in detail..." rows="3"></textarea>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn">🎯 Submit Hit for Rating!</button>
+                </form>
+            </section>
+
+            <section class="recent-hits">
+                <h3>📊 Recent Hits</h3>
+                <div id="hitsList" class="hits-list">
+                    <!-- Hits will be dynamically added here -->
+                </div>
+            </section>
+
+            <section class="stats">
+                <h3>📈 Hit Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>Total Hits</h4>
+                        <span id="totalHits">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Average Rating</h4>
+                        <span id="avgRating">0.0</span>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Most Common Type</h4>
+                        <span id="commonType">None</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2024 RateMyHitCam.borg - Dedicated to documenting Cam's legendary hits on Nick</p>
+            <p>⚠️ For tomfoolery purposes only. No actual roommates were harmed in the making of these ratings.</p>
+        </div>
+    </footer>
+
+    <div id="adminModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
+            <div class="modal-header">
+                <h3 id="adminModalTitle" class="modal-title">Admin</h3>
+                <button id="adminModalClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+            </div>
+
+            <div id="adminLoginView" class="modal-body">
+                <div class="form-group">
+                    <label for="adminPasscode">Passcode</label>
+                    <input id="adminPasscode" type="password" placeholder="Enter passcode" autocomplete="current-password">
+                </div>
+                <div class="modal-actions">
+                    <button id="adminLoginBtn" class="btn" type="button">Log In</button>
+                    <button id="adminLogoutBtn" class="btn btn-ghost" type="button">Log Out</button>
+                </div>
+                <div class="modal-hint">This is a static site. Admin is stored only in your browser.</div>
+            </div>
+
+            <div id="adminEditView" class="modal-body" style="display:none;">
+                <form id="editHitForm" class="hit-form">
+                    <input type="hidden" id="editHitId">
+                    <div class="form-group">
+                        <label for="editHitReason">Reason</label>
+                        <input type="text" id="editHitReason" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editHitType">Type of Hit</label>
+                        <select id="editHitType" required>
+                            <option value="slap">🖐️ Classic Slap</option>
+                            <option value="poke">👉 Annoying Poke</option>
+                            <option value="noogie">👊 Noogie</option>
+                            <option value="wet_willy">💧 Wet Willy</option>
+                            <option value="pillow">🛏️ Pillow Attack</option>
+                            <option value="other">❓ Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editHitSeverity">Severity (1-10)</label>
+                        <input type="range" id="editHitSeverity" min="1" max="10" value="5" class="severity-slider">
+                        <span id="editSeverityValue">5</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="editHitDescription">Description</label>
+                        <textarea id="editHitDescription" rows="3"></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn" type="submit">Save Changes</button>
+                        <button id="editCancelBtn" class="btn btn-ghost" type="button">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

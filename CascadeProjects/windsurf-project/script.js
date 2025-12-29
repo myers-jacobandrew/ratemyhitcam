@@ -1,0 +1,545 @@
+// Hit Rating System
+class HitRatingSystem {
+    constructor() {
+        this.adminPasscode = 'hitcam';
+        this.isAdmin = this.loadAdminState();
+        this.editingHitId = null;
+        this.hits = this.loadHits();
+        this.initializeEventListeners();
+        this.renderHits();
+        this.updateStats();
+        this.updateAdminUI();
+    }
+
+    loadAdminState() {
+        return localStorage.getItem('isAdmin') === 'true';
+    }
+
+    setAdminState(isAdmin) {
+        this.isAdmin = isAdmin;
+        localStorage.setItem('isAdmin', isAdmin ? 'true' : 'false');
+        this.updateAdminUI();
+        this.renderHits();
+    }
+
+    updateAdminUI() {
+        const status = document.getElementById('adminStatus');
+        if (status) status.textContent = this.isAdmin ? 'Admin' : 'Guest';
+
+        const logoutBtn = document.getElementById('adminLogoutBtn');
+        if (logoutBtn) logoutBtn.style.display = this.isAdmin ? 'inline-flex' : 'none';
+
+        const loginBtn = document.getElementById('adminLoginBtn');
+        if (loginBtn) loginBtn.style.display = this.isAdmin ? 'none' : 'inline-flex';
+    }
+
+    // Load hits from localStorage
+    loadHits() {
+        const stored = localStorage.getItem('camHits');
+        return stored ? JSON.parse(stored) : this.getDefaultHits();
+    }
+
+    // Get default sample hits
+    getDefaultHits() {
+        return [
+            {
+                id: 1,
+                reason: "Made a terrible dad joke about programming",
+                type: "slap",
+                severity: 7,
+                description: "Nick said 'Why do programmers prefer dark mode? Because light attracts bugs!' Cam delivered a swift but fair slap.",
+                timestamp: new Date(Date.now() - 86400000).toISOString(),
+                ratings: [5, 4, 5, 3, 4],
+                averageRating: 4.2
+            },
+            {
+                id: 2,
+                reason: "Left dirty dishes in the sink",
+                type: "poke",
+                severity: 3,
+                description: "Classic offense. Cam responded with repeated annoying pokes until Nick cleaned up.",
+                timestamp: new Date(Date.now() - 172800000).toISOString(),
+                ratings: [4, 3, 4],
+                averageRating: 3.7
+            }
+        ];
+    }
+
+    // Save hits to localStorage
+    saveHits() {
+        localStorage.setItem('camHits', JSON.stringify(this.hits));
+    }
+
+    // Initialize event listeners
+    initializeEventListeners() {
+        // Form submission
+        document.getElementById('hitForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.submitHit();
+        });
+
+        const adminToggleBtn = document.getElementById('adminToggleBtn');
+        if (adminToggleBtn) {
+            adminToggleBtn.addEventListener('click', () => this.openAdminModal('login'));
+        }
+
+        const adminModalClose = document.getElementById('adminModalClose');
+        if (adminModalClose) {
+            adminModalClose.addEventListener('click', () => this.closeAdminModal());
+        }
+
+        const adminModal = document.getElementById('adminModal');
+        if (adminModal) {
+            adminModal.addEventListener('click', (e) => {
+                if (e.target === adminModal) this.closeAdminModal();
+            });
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeAdminModal();
+        });
+
+        const adminLoginBtn = document.getElementById('adminLoginBtn');
+        if (adminLoginBtn) {
+            adminLoginBtn.addEventListener('click', () => this.handleAdminLogin());
+        }
+
+        const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+        if (adminLogoutBtn) {
+            adminLogoutBtn.addEventListener('click', () => {
+                this.setAdminState(false);
+                this.closeAdminModal();
+                this.showNotification('Logged out.');
+            });
+        }
+
+        const editHitForm = document.getElementById('editHitForm');
+        if (editHitForm) {
+            editHitForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveEditHit();
+            });
+        }
+
+        const editCancelBtn = document.getElementById('editCancelBtn');
+        if (editCancelBtn) {
+            editCancelBtn.addEventListener('click', () => {
+                this.editingHitId = null;
+                this.openAdminModal('login');
+            });
+        }
+
+        const editSeveritySlider = document.getElementById('editHitSeverity');
+        const editSeverityValue = document.getElementById('editSeverityValue');
+        if (editSeveritySlider && editSeverityValue) {
+            editSeveritySlider.addEventListener('input', (e) => {
+                editSeverityValue.textContent = e.target.value;
+            });
+        }
+
+        const hitsList = document.getElementById('hitsList');
+        if (hitsList) {
+            hitsList.addEventListener('click', (e) => {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const hitId = btn.dataset.hitId ? parseInt(btn.dataset.hitId, 10) : null;
+                if (!action || !hitId) return;
+
+                if (action === 'edit' && this.isAdmin) {
+                    this.startEditHit(hitId);
+                }
+                if (action === 'delete' && this.isAdmin) {
+                    this.deleteHit(hitId);
+                }
+            });
+        }
+
+        // Severity slider
+        const severitySlider = document.getElementById('hitSeverity');
+        const severityValue = document.getElementById('severityValue');
+        severitySlider.addEventListener('input', (e) => {
+            severityValue.textContent = e.target.value;
+        });
+    }
+
+    openAdminModal(view) {
+        const adminModal = document.getElementById('adminModal');
+        const loginView = document.getElementById('adminLoginView');
+        const editView = document.getElementById('adminEditView');
+        if (!adminModal || !loginView || !editView) return;
+
+        adminModal.classList.add('open');
+        adminModal.setAttribute('aria-hidden', 'false');
+
+        if (view === 'edit') {
+            loginView.style.display = 'none';
+            editView.style.display = 'block';
+        } else {
+            loginView.style.display = 'block';
+            editView.style.display = 'none';
+        }
+
+        this.updateAdminUI();
+    }
+
+    closeAdminModal() {
+        const adminModal = document.getElementById('adminModal');
+        if (!adminModal) return;
+        adminModal.classList.remove('open');
+        adminModal.setAttribute('aria-hidden', 'true');
+    }
+
+    handleAdminLogin() {
+        const passInput = document.getElementById('adminPasscode');
+        const passcode = passInput ? passInput.value : '';
+        if (passcode === this.adminPasscode) {
+            this.setAdminState(true);
+            if (passInput) passInput.value = '';
+            this.closeAdminModal();
+            this.showNotification('Admin enabled.');
+            return;
+        }
+        this.showNotification('Wrong passcode.');
+    }
+
+    // Submit a new hit
+    submitHit() {
+        const form = document.getElementById('hitForm');
+        const newHit = {
+            id: Date.now(),
+            reason: document.getElementById('hitReason').value,
+            type: document.getElementById('hitType').value,
+            severity: parseInt(document.getElementById('hitSeverity').value),
+            description: document.getElementById('hitDescription').value,
+            timestamp: new Date().toISOString(),
+            ratings: [],
+            averageRating: 0
+        };
+
+        this.hits.unshift(newHit);
+        this.saveHits();
+        this.renderHits();
+        this.updateStats();
+        
+        // Reset form
+        form.reset();
+        document.getElementById('severityValue').textContent = '5';
+        
+        // Show success message
+        this.showNotification('Hit submitted successfully! Now get your friends to rate it! 🎯');
+    }
+
+    // Render all hits
+    renderHits() {
+        const hitsList = document.getElementById('hitsList');
+        
+        if (this.hits.length === 0) {
+            hitsList.innerHTML = `
+                <div class="empty-state">
+                    <h4>No hits yet!</h4>
+                    <p>Submit the first hit to get started.</p>
+                </div>
+            `;
+            return;
+        }
+
+        hitsList.innerHTML = this.hits.map(hit => this.renderHitCard(hit)).join('');
+        
+        // Add rating event listeners
+        this.hits.forEach(hit => {
+            this.addRatingListeners(hit.id);
+        });
+    }
+
+    // Render individual hit card
+    renderHitCard(hit) {
+        const typeEmoji = this.getTypeEmoji(hit.type);
+        const severityColor = this.getSeverityColor(hit.severity);
+        const timeAgo = this.getTimeAgo(hit.timestamp);
+        const adminControls = this.isAdmin
+            ? `
+                <div class="admin-actions">
+                    <button class="admin-action-btn" type="button" data-action="edit" data-hit-id="${hit.id}">Edit</button>
+                    <button class="admin-action-btn danger" type="button" data-action="delete" data-hit-id="${hit.id}">Delete</button>
+                </div>
+            `
+            : '';
+        
+        return `
+            <div class="hit-card" data-hit-id="${hit.id}">
+                <div class="hit-header">
+                    <span class="hit-type">${typeEmoji} ${this.getTypeLabel(hit.type)}</span>
+                    <div class="hit-severity">
+                        <span>Severity:</span>
+                        <span class="severity-badge" style="background: ${severityColor}">${hit.severity}/10</span>
+                    </div>
+                </div>
+                
+                <div class="hit-reason">🎯 ${hit.reason}</div>
+                
+                ${hit.description ? `<div class="hit-description">${hit.description}</div>` : ''}
+                
+                <div class="hit-actions">
+                    <div class="hit-rating">
+                        <div class="rating-stars" data-hit-id="${hit.id}">
+                            ${this.renderStars(hit.id, hit.averageRating)}
+                        </div>
+                        <span class="rating-count">
+                            ${hit.ratings.length > 0 ? `${hit.ratings.length} ratings • ${hit.averageRating.toFixed(1)}` : 'No ratings yet'}
+                        </span>
+                    </div>
+                    ${adminControls}
+                </div>
+                
+                <div style="margin-top: 0.5rem; font-size: 0.8rem; color: rgba(229, 231, 235, 0.45);">
+                    ${timeAgo}
+                </div>
+            </div>
+        `;
+    }
+
+    startEditHit(hitId) {
+        const hit = this.hits.find(h => h.id === hitId);
+        if (!hit) return;
+
+        this.editingHitId = hitId;
+
+        const editId = document.getElementById('editHitId');
+        const editReason = document.getElementById('editHitReason');
+        const editType = document.getElementById('editHitType');
+        const editSeverity = document.getElementById('editHitSeverity');
+        const editSeverityValue = document.getElementById('editSeverityValue');
+        const editDescription = document.getElementById('editHitDescription');
+
+        if (editId) editId.value = String(hit.id);
+        if (editReason) editReason.value = hit.reason || '';
+        if (editType) editType.value = hit.type || 'other';
+        if (editSeverity) editSeverity.value = String(hit.severity || 5);
+        if (editSeverityValue) editSeverityValue.textContent = String(hit.severity || 5);
+        if (editDescription) editDescription.value = hit.description || '';
+
+        this.openAdminModal('edit');
+    }
+
+    saveEditHit() {
+        if (!this.isAdmin || !this.editingHitId) return;
+        const hit = this.hits.find(h => h.id === this.editingHitId);
+        if (!hit) return;
+
+        const editReason = document.getElementById('editHitReason');
+        const editType = document.getElementById('editHitType');
+        const editSeverity = document.getElementById('editHitSeverity');
+        const editDescription = document.getElementById('editHitDescription');
+
+        hit.reason = editReason ? editReason.value : hit.reason;
+        hit.type = editType ? editType.value : hit.type;
+        hit.severity = editSeverity ? parseInt(editSeverity.value, 10) : hit.severity;
+        hit.description = editDescription ? editDescription.value : hit.description;
+
+        this.saveHits();
+        this.renderHits();
+        this.updateStats();
+        this.editingHitId = null;
+        this.openAdminModal('login');
+        this.showNotification('Hit updated.');
+    }
+
+    deleteHit(hitId) {
+        const hit = this.hits.find(h => h.id === hitId);
+        if (!hit) return;
+        const ok = window.confirm('Delete this hit?');
+        if (!ok) return;
+
+        this.hits = this.hits.filter(h => h.id !== hitId);
+        this.saveHits();
+        this.renderHits();
+        this.updateStats();
+        this.showNotification('Hit deleted.');
+    }
+
+    // Render star rating
+    renderStars(hitId, averageRating) {
+        let stars = '';
+        for (let i = 1; i <= 5; i++) {
+            const filled = i <= Math.round(averageRating);
+            stars += `<span class="star ${filled ? 'filled' : ''}" data-rating="${i}" data-hit-id="${hitId}">⭐</span>`;
+        }
+        return stars;
+    }
+
+    // Add rating listeners to stars
+    addRatingListeners(hitId) {
+        const stars = document.querySelectorAll(`.star[data-hit-id="${hitId}"]`);
+        stars.forEach(star => {
+            star.addEventListener('click', () => {
+                const rating = parseInt(star.dataset.rating);
+                this.rateHit(hitId, rating);
+            });
+        });
+    }
+
+    // Rate a hit
+    rateHit(hitId, rating) {
+        const hit = this.hits.find(h => h.id === hitId);
+        if (!hit) return;
+
+        // Check if user has already rated (simple check - in production you'd use user authentication)
+        if (hit.ratings.length > 0) {
+            this.showNotification('You\'ve already rated this hit! 🌟');
+            return;
+        }
+
+        hit.ratings.push(rating);
+        hit.averageRating = hit.ratings.reduce((a, b) => a + b, 0) / hit.ratings.length;
+        
+        this.saveHits();
+        this.renderHits();
+        this.updateStats();
+        
+        this.showNotification(`Hit rated ${rating} stars! ⭐`);
+    }
+
+    // Update statistics
+    updateStats() {
+        const totalHits = this.hits.length;
+        const avgRating = totalHits > 0 
+            ? this.hits.filter(h => h.ratings.length > 0).reduce((sum, h) => sum + h.averageRating, 0) / this.hits.filter(h => h.ratings.length > 0).length
+            : 0;
+        
+        const typeCounts = {};
+        this.hits.forEach(hit => {
+            typeCounts[hit.type] = (typeCounts[hit.type] || 0) + 1;
+        });
+        
+        const mostCommonType = Object.keys(typeCounts).length > 0
+            ? Object.keys(typeCounts).reduce((a, b) => typeCounts[a] > typeCounts[b] ? a : b)
+            : 'None';
+
+        document.getElementById('totalHits').textContent = totalHits;
+        document.getElementById('avgRating').textContent = avgRating > 0 ? avgRating.toFixed(1) : '0.0';
+        document.getElementById('commonType').textContent = mostCommonType !== 'None' ? this.getTypeLabel(mostCommonType) : 'None';
+    }
+
+    // Helper functions
+    getTypeEmoji(type) {
+        const emojis = {
+            slap: '🖐️',
+            poke: '👉',
+            noogie: '👊',
+            wet_willy: '💧',
+            pillow: '🛏️',
+            other: '❓'
+        };
+        return emojis[type] || '❓';
+    }
+
+    getTypeLabel(type) {
+        const labels = {
+            slap: 'Classic Slap',
+            poke: 'Annoying Poke',
+            noogie: 'Noogie',
+            wet_willy: 'Wet Willy',
+            pillow: 'Pillow Attack',
+            other: 'Other'
+        };
+        return labels[type] || 'Other';
+    }
+
+    getSeverityColor(severity) {
+        if (severity <= 3) return 'rgba(229, 231, 235, 0.16)';
+        if (severity <= 6) return 'rgba(229, 231, 235, 0.22)';
+        if (severity <= 8) return 'rgba(229, 231, 235, 0.30)';
+        return 'rgba(229, 231, 235, 0.38)';
+    }
+
+    getTimeAgo(timestamp) {
+        const now = new Date();
+        const hitTime = new Date(timestamp);
+        const diffMs = now - hitTime;
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffDays > 0) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+        if (diffHours > 0) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        return 'Just now';
+    }
+
+    // Show notification
+    showNotification(message) {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 20, 32, 0.92);
+            color: rgba(229, 231, 235, 0.95);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            font-weight: 600;
+            backdrop-filter: blur(14px);
+        `;
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => {
+                document.body.removeChild(notification);
+            }, 300);
+        }, 3000);
+    }
+}
+
+// Add slideOut animation
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideOut {
+        to {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+    }
+`;
+document.head.appendChild(style);
+
+// Initialize the system when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    new HitRatingSystem();
+});
+
+// Add some fun easter eggs
+document.addEventListener('DOMContentLoaded', () => {
+    // Konami code for fun
+    let konamiCode = [];
+    const secretCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+    
+    document.addEventListener('keydown', (e) => {
+        konamiCode.push(e.key);
+        konamiCode = konamiCode.slice(-10);
+        
+        if (konamiCode.join(',') === secretCode.join(',')) {
+            document.body.style.animation = 'rainbow 2s linear infinite';
+            setTimeout(() => {
+                document.body.style.animation = '';
+            }, 5000);
+        }
+    });
+    
+    // Add rainbow animation
+    const rainbowStyle = document.createElement('style');
+    rainbowStyle.textContent = `
+        @keyframes rainbow {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(rainbowStyle);
+});
