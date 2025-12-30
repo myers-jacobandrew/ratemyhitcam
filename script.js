@@ -1,14 +1,48 @@
+// Supabase config
+// 1) Create a Supabase project
+// 2) Paste your Project URL and anon public key here
+const SUPABASE_URL = 'https://xxfzetutgmxhmwtztjbd.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_i8YRYdwtqU-vo9E0SxuVNA_mpdG_dgU';
+
+function getOrCreateRaterId() {
+    const key = 'raterId';
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+
+    const raterId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now()) + '-' + String(Math.random()).slice(2);
+    localStorage.setItem(key, raterId);
+    return raterId;
+}
+
 // Hit Rating System
 class HitRatingSystem {
     constructor() {
         this.adminPasscode = 'hitcam';
         this.isAdmin = this.loadAdminState();
         this.editingHitId = null;
-        this.hits = this.loadHits();
+        this.hits = [];
+        this.raterId = getOrCreateRaterId();
+        this.supabase = this.createSupabaseClient();
+
         this.initializeEventListeners();
+        this.updateAdminUI();
+        this.init();
+    }
+
+    createSupabaseClient() {
+        const hasConfig = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+        if (!hasConfig) return null;
+
+        if (!window.supabase || !window.supabase.createClient) return null;
+        return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+
+    async init() {
+        await this.refreshHitsFromServer();
         this.renderHits();
         this.updateStats();
-        this.updateAdminUI();
     }
 
     loadAdminState() {
@@ -31,12 +65,6 @@ class HitRatingSystem {
 
         const loginBtn = document.getElementById('adminLoginBtn');
         if (loginBtn) loginBtn.style.display = this.isAdmin ? 'none' : 'inline-flex';
-    }
-
-    // Load hits from localStorage
-    loadHits() {
-        const stored = localStorage.getItem('camHits');
-        return stored ? JSON.parse(stored) : this.getDefaultHits();
     }
 
     // Get default sample hits
@@ -65,17 +93,67 @@ class HitRatingSystem {
         ];
     }
 
-    // Save hits to localStorage
-    saveHits() {
-        localStorage.setItem('camHits', JSON.stringify(this.hits));
+    async refreshHitsFromServer() {
+        if (!this.supabase) {
+            this.hits = this.getDefaultHits();
+            return;
+        }
+
+        const { data: hits, error: hitsError } = await this.supabase
+            .from('hits')
+            .select('id, reason, type, severity, description, created_at')
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (hitsError) {
+            this.showNotification('Could not load hits from server.');
+            this.hits = [];
+            return;
+        }
+
+        const hitIds = (hits || []).map(h => h.id);
+        let ratingsByHitId = {};
+        if (hitIds.length > 0) {
+            const { data: ratings, error: ratingsError } = await this.supabase
+                .from('hit_ratings')
+                .select('hit_id, rating')
+                .in('hit_id', hitIds);
+
+            if (!ratingsError && ratings) {
+                ratingsByHitId = ratings.reduce((acc, row) => {
+                    const key = row.hit_id;
+                    acc[key] = acc[key] || [];
+                    acc[key].push(row.rating);
+                    return acc;
+                }, {});
+            }
+        }
+
+        this.hits = (hits || []).map(h => {
+            const ratings = ratingsByHitId[h.id] || [];
+            const averageRating = ratings.length > 0
+                ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+                : 0;
+
+            return {
+                id: h.id,
+                reason: h.reason,
+                type: h.type,
+                severity: h.severity,
+                description: h.description,
+                timestamp: h.created_at,
+                ratings,
+                averageRating
+            };
+        });
     }
 
     // Initialize event listeners
     initializeEventListeners() {
         // Form submission
-        document.getElementById('hitForm').addEventListener('submit', (e) => {
+        document.getElementById('hitForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            this.submitHit();
+            await this.submitHit();
         });
 
         const adminToggleBtn = document.getElementById('adminToggleBtn');
@@ -115,9 +193,9 @@ class HitRatingSystem {
 
         const editHitForm = document.getElementById('editHitForm');
         if (editHitForm) {
-            editHitForm.addEventListener('submit', (e) => {
+            editHitForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                this.saveEditHit();
+                await this.saveEditHit();
             });
         }
 
@@ -139,7 +217,7 @@ class HitRatingSystem {
 
         const hitsList = document.getElementById('hitsList');
         if (hitsList) {
-            hitsList.addEventListener('click', (e) => {
+            hitsList.addEventListener('click', async (e) => {
                 const btn = e.target.closest('button');
                 if (!btn) return;
                 const action = btn.dataset.action;
@@ -150,7 +228,7 @@ class HitRatingSystem {
                     this.startEditHit(hitId);
                 }
                 if (action === 'delete' && this.isAdmin) {
-                    this.deleteHit(hitId);
+                    await this.deleteHit(hitId);
                 }
             });
         }
@@ -204,21 +282,41 @@ class HitRatingSystem {
     }
 
     // Submit a new hit
-    submitHit() {
+    async submitHit() {
         const form = document.getElementById('hitForm');
+        const reason = document.getElementById('hitReason').value;
+        const type = document.getElementById('hitType').value;
+        const severity = parseInt(document.getElementById('hitSeverity').value);
+        const description = document.getElementById('hitDescription').value;
+
+        if (!this.supabase) {
+            this.showNotification('Supabase is not configured yet.');
+            return;
+        }
+
+        const { data, error } = await this.supabase
+            .from('hits')
+            .insert({ reason, type, severity, description })
+            .select('id, reason, type, severity, description, created_at')
+            .single();
+
+        if (error || !data) {
+            this.showNotification('Could not submit hit.');
+            return;
+        }
+
         const newHit = {
-            id: Date.now(),
-            reason: document.getElementById('hitReason').value,
-            type: document.getElementById('hitType').value,
-            severity: parseInt(document.getElementById('hitSeverity').value),
-            description: document.getElementById('hitDescription').value,
-            timestamp: new Date().toISOString(),
+            id: data.id,
+            reason: data.reason,
+            type: data.type,
+            severity: data.severity,
+            description: data.description,
+            timestamp: data.created_at,
             ratings: [],
             averageRating: 0
         };
 
         this.hits.unshift(newHit);
-        this.saveHits();
         this.renderHits();
         this.updateStats();
         
@@ -322,22 +420,41 @@ class HitRatingSystem {
         this.openAdminModal('edit');
     }
 
-    saveEditHit() {
+    async saveEditHit() {
         if (!this.isAdmin || !this.editingHitId) return;
         const hit = this.hits.find(h => h.id === this.editingHitId);
         if (!hit) return;
+
+        if (!this.supabase) {
+            this.showNotification('Supabase is not configured yet.');
+            return;
+        }
 
         const editReason = document.getElementById('editHitReason');
         const editType = document.getElementById('editHitType');
         const editSeverity = document.getElementById('editHitSeverity');
         const editDescription = document.getElementById('editHitDescription');
 
-        hit.reason = editReason ? editReason.value : hit.reason;
-        hit.type = editType ? editType.value : hit.type;
-        hit.severity = editSeverity ? parseInt(editSeverity.value, 10) : hit.severity;
-        hit.description = editDescription ? editDescription.value : hit.description;
+        const nextReason = editReason ? editReason.value : hit.reason;
+        const nextType = editType ? editType.value : hit.type;
+        const nextSeverity = editSeverity ? parseInt(editSeverity.value, 10) : hit.severity;
+        const nextDescription = editDescription ? editDescription.value : hit.description;
 
-        this.saveHits();
+        const { error } = await this.supabase
+            .from('hits')
+            .update({ reason: nextReason, type: nextType, severity: nextSeverity, description: nextDescription })
+            .eq('id', hit.id);
+
+        if (error) {
+            this.showNotification('Could not update hit.');
+            return;
+        }
+
+        hit.reason = nextReason;
+        hit.type = nextType;
+        hit.severity = nextSeverity;
+        hit.description = nextDescription;
+
         this.renderHits();
         this.updateStats();
         this.editingHitId = null;
@@ -345,14 +462,28 @@ class HitRatingSystem {
         this.showNotification('Hit updated.');
     }
 
-    deleteHit(hitId) {
+    async deleteHit(hitId) {
         const hit = this.hits.find(h => h.id === hitId);
         if (!hit) return;
         const ok = window.confirm('Delete this hit?');
         if (!ok) return;
 
+        if (!this.supabase) {
+            this.showNotification('Supabase is not configured yet.');
+            return;
+        }
+
+        const { error } = await this.supabase
+            .from('hits')
+            .delete()
+            .eq('id', hit.id);
+
+        if (error) {
+            this.showNotification('Could not delete hit.');
+            return;
+        }
+
         this.hits = this.hits.filter(h => h.id !== hitId);
-        this.saveHits();
         this.renderHits();
         this.updateStats();
         this.showNotification('Hit deleted.');
@@ -380,31 +511,41 @@ class HitRatingSystem {
     }
 
     // Rate a hit
-    rateHit(hitId, rating) {
+    async rateHit(hitId, rating) {
         const hit = this.hits.find(h => h.id === hitId);
         if (!hit) return;
 
-        // Check if user has already rated (simple check - in production you'd use user authentication)
-        if (hit.ratings.length > 0) {
-            this.showNotification('You\'ve already rated this hit! 🌟');
+        if (!this.supabase) {
+            this.showNotification('Supabase is not configured yet.');
+            return;
+        }
+
+        const { error } = await this.supabase
+            .from('hit_ratings')
+            .insert({ hit_id: hit.id, rater_id: this.raterId, rating });
+
+        if (error) {
+            if (error.code === '23505') {
+                this.showNotification('You\'ve already rated this hit! 🌟');
+                return;
+            }
+            this.showNotification('Could not submit rating.');
             return;
         }
 
         hit.ratings.push(rating);
         hit.averageRating = hit.ratings.reduce((a, b) => a + b, 0) / hit.ratings.length;
-        
-        this.saveHits();
         this.renderHits();
         this.updateStats();
-        
         this.showNotification(`Hit rated ${rating} stars! ⭐`);
     }
 
     // Update statistics
     updateStats() {
         const totalHits = this.hits.length;
-        const avgRating = totalHits > 0 
-            ? this.hits.filter(h => h.ratings.length > 0).reduce((sum, h) => sum + h.averageRating, 0) / this.hits.filter(h => h.ratings.length > 0).length
+        const ratedHits = this.hits.filter(h => h.ratings.length > 0);
+        const avgRating = ratedHits.length > 0
+            ? ratedHits.reduce((sum, h) => sum + h.averageRating, 0) / ratedHits.length
             : 0;
         
         const typeCounts = {};
