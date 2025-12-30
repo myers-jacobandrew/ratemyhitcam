@@ -106,7 +106,8 @@ class HitRatingSystem {
             .limit(50);
 
         if (hitsError) {
-            this.showNotification('Could not load hits from server.');
+            console.error('Supabase hits select error:', hitsError);
+            this.showNotification(`Could not load hits from server. (${hitsError.message})`);
             this.hits = [];
             return;
         }
@@ -119,6 +120,9 @@ class HitRatingSystem {
                 .select('hit_id, rating')
                 .in('hit_id', hitIds);
 
+            if (ratingsError) {
+                console.error('Supabase ratings select error:', ratingsError);
+            }
             if (!ratingsError && ratings) {
                 ratingsByHitId = ratings.reduce((acc, row) => {
                     const key = row.hit_id;
@@ -301,7 +305,8 @@ class HitRatingSystem {
             .single();
 
         if (error || !data) {
-            this.showNotification('Could not submit hit.');
+            console.error('Supabase hits insert error:', error);
+            this.showNotification(`Could not submit hit. (${error ? error.message : 'no data'})`);
             return;
         }
 
@@ -446,7 +451,8 @@ class HitRatingSystem {
             .eq('id', hit.id);
 
         if (error) {
-            this.showNotification('Could not update hit.');
+            console.error('Supabase hits update error:', error);
+            this.showNotification(`Could not update hit. (${error.message})`);
             return;
         }
 
@@ -479,7 +485,8 @@ class HitRatingSystem {
             .eq('id', hit.id);
 
         if (error) {
-            this.showNotification('Could not delete hit.');
+            console.error('Supabase hits delete error:', error);
+            this.showNotification(`Could not delete hit. (${error.message})`);
             return;
         }
 
@@ -525,11 +532,12 @@ class HitRatingSystem {
             .insert({ hit_id: hit.id, rater_id: this.raterId, rating });
 
         if (error) {
+            console.error('Supabase hit_ratings insert error:', error);
             if (error.code === '23505') {
                 this.showNotification('You\'ve already rated this hit! 🌟');
                 return;
             }
-            this.showNotification('Could not submit rating.');
+            this.showNotification(`Could not submit rating. (${error.message})`);
             return;
         }
 
