@@ -74,7 +74,6 @@ class HitRatingSystem {
                 id: 1,
                 reason: "Made a terrible dad joke about programming",
                 type: "slap",
-                severity: 7,
                 description: "Nick said 'Why do programmers prefer dark mode? Because light attracts bugs!' Cam delivered a swift but fair slap.",
                 timestamp: new Date(Date.now() - 86400000).toISOString(),
                 ratings: [5, 4, 5, 3, 4],
@@ -84,7 +83,6 @@ class HitRatingSystem {
                 id: 2,
                 reason: "Left dirty dishes in the sink",
                 type: "poke",
-                severity: 3,
                 description: "Classic offense. Cam responded with repeated annoying pokes until Nick cleaned up.",
                 timestamp: new Date(Date.now() - 172800000).toISOString(),
                 ratings: [4, 3, 4],
@@ -101,7 +99,7 @@ class HitRatingSystem {
 
         const { data: hits, error: hitsError } = await this.supabase
             .from('hits')
-            .select('id, reason, type, severity, description, created_at')
+            .select('id, reason, type, description, created_at')
             .order('created_at', { ascending: false })
             .limit(50);
 
@@ -143,7 +141,6 @@ class HitRatingSystem {
                 id: h.id,
                 reason: h.reason,
                 type: h.type,
-                severity: h.severity,
                 description: h.description,
                 timestamp: h.created_at,
                 ratings,
@@ -211,14 +208,6 @@ class HitRatingSystem {
             });
         }
 
-        const editSeveritySlider = document.getElementById('editHitSeverity');
-        const editSeverityValue = document.getElementById('editSeverityValue');
-        if (editSeveritySlider && editSeverityValue) {
-            editSeveritySlider.addEventListener('input', (e) => {
-                editSeverityValue.textContent = e.target.value;
-            });
-        }
-
         const hitsList = document.getElementById('hitsList');
         if (hitsList) {
             hitsList.addEventListener('click', async (e) => {
@@ -237,12 +226,7 @@ class HitRatingSystem {
             });
         }
 
-        // Severity slider
-        const severitySlider = document.getElementById('hitSeverity');
-        const severityValue = document.getElementById('severityValue');
-        severitySlider.addEventListener('input', (e) => {
-            severityValue.textContent = e.target.value;
-        });
+        // no-op
     }
 
     openAdminModal(view) {
@@ -290,7 +274,6 @@ class HitRatingSystem {
         const form = document.getElementById('hitForm');
         const reason = document.getElementById('hitReason').value;
         const type = document.getElementById('hitType').value;
-        const severity = parseInt(document.getElementById('hitSeverity').value);
         const description = document.getElementById('hitDescription').value;
 
         if (!this.supabase) {
@@ -300,8 +283,8 @@ class HitRatingSystem {
 
         const { data, error } = await this.supabase
             .from('hits')
-            .insert({ reason, type, severity, description })
-            .select('id, reason, type, severity, description, created_at')
+            .insert({ reason, type, description })
+            .select('id, reason, type, description, created_at')
             .single();
 
         if (error || !data) {
@@ -314,7 +297,6 @@ class HitRatingSystem {
             id: data.id,
             reason: data.reason,
             type: data.type,
-            severity: data.severity,
             description: data.description,
             timestamp: data.created_at,
             ratings: [],
@@ -327,7 +309,7 @@ class HitRatingSystem {
         
         // Reset form
         form.reset();
-        document.getElementById('severityValue').textContent = '5';
+        // no-op
         
         // Show success message
         this.showNotification('Hit submitted successfully! Now get your friends to rate it! 🎯');
@@ -358,7 +340,6 @@ class HitRatingSystem {
     // Render individual hit card
     renderHitCard(hit) {
         const typeEmoji = this.getTypeEmoji(hit.type);
-        const severityColor = this.getSeverityColor(hit.severity);
         const timeAgo = this.getTimeAgo(hit.timestamp);
         const adminControls = this.isAdmin
             ? `
@@ -373,10 +354,6 @@ class HitRatingSystem {
             <div class="hit-card" data-hit-id="${hit.id}">
                 <div class="hit-header">
                     <span class="hit-type">${typeEmoji} ${this.getTypeLabel(hit.type)}</span>
-                    <div class="hit-severity">
-                        <span>Severity:</span>
-                        <span class="severity-badge" style="background: ${severityColor}">${hit.severity}/10</span>
-                    </div>
                 </div>
                 
                 <div class="hit-reason">🎯 ${hit.reason}</div>
@@ -411,15 +388,11 @@ class HitRatingSystem {
         const editId = document.getElementById('editHitId');
         const editReason = document.getElementById('editHitReason');
         const editType = document.getElementById('editHitType');
-        const editSeverity = document.getElementById('editHitSeverity');
-        const editSeverityValue = document.getElementById('editSeverityValue');
         const editDescription = document.getElementById('editHitDescription');
 
         if (editId) editId.value = String(hit.id);
         if (editReason) editReason.value = hit.reason || '';
         if (editType) editType.value = hit.type || 'other';
-        if (editSeverity) editSeverity.value = String(hit.severity || 5);
-        if (editSeverityValue) editSeverityValue.textContent = String(hit.severity || 5);
         if (editDescription) editDescription.value = hit.description || '';
 
         this.openAdminModal('edit');
@@ -437,17 +410,15 @@ class HitRatingSystem {
 
         const editReason = document.getElementById('editHitReason');
         const editType = document.getElementById('editHitType');
-        const editSeverity = document.getElementById('editHitSeverity');
         const editDescription = document.getElementById('editHitDescription');
 
         const nextReason = editReason ? editReason.value : hit.reason;
         const nextType = editType ? editType.value : hit.type;
-        const nextSeverity = editSeverity ? parseInt(editSeverity.value, 10) : hit.severity;
         const nextDescription = editDescription ? editDescription.value : hit.description;
 
         const { error } = await this.supabase
             .from('hits')
-            .update({ reason: nextReason, type: nextType, severity: nextSeverity, description: nextDescription })
+            .update({ reason: nextReason, type: nextType, description: nextDescription })
             .eq('id', hit.id);
 
         if (error) {
@@ -458,7 +429,6 @@ class HitRatingSystem {
 
         hit.reason = nextReason;
         hit.type = nextType;
-        hit.severity = nextSeverity;
         hit.description = nextDescription;
 
         this.renderHits();
@@ -575,8 +545,8 @@ class HitRatingSystem {
         const emojis = {
             slap: '🖐️',
             poke: '👉',
-            noogie: '👊',
-            wet_willy: '💧',
+            nerf_gun: '�',
+            throwing_misc: '🦝',
             pillow: '🛏️',
             other: '❓'
         };
@@ -587,19 +557,12 @@ class HitRatingSystem {
         const labels = {
             slap: 'Classic Slap',
             poke: 'Annoying Poke',
-            noogie: 'Noogie',
-            wet_willy: 'Wet Willy',
+            nerf_gun: 'Nerf Gun',
+            throwing_misc: 'Throwing Misc Things (Raccoon)',
             pillow: 'Pillow Attack',
             other: 'Other'
         };
         return labels[type] || 'Other';
-    }
-
-    getSeverityColor(severity) {
-        if (severity <= 3) return 'rgba(229, 231, 235, 0.16)';
-        if (severity <= 6) return 'rgba(229, 231, 235, 0.22)';
-        if (severity <= 8) return 'rgba(229, 231, 235, 0.30)';
-        return 'rgba(229, 231, 235, 0.38)';
     }
 
     getTimeAgo(timestamp) {
